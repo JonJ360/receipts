@@ -50,13 +50,13 @@ async function summaryPages(doc,s){
  let c,x,y;const widths=[68,96,70,74,133,90];
  const headers=['Date','Name','Price','Currency','Category Name','Reimbursable'];
  const start=()=>{({c,x}=surface());x.fillStyle='black';x.font='bold 12px Arial';const dates=s.rows.map(r=>r.receipt_date);const months=[...new Set(dates.map(d=>d.slice(0,7)))];const month=s.filters.month||(months.length===1?months[0]:'');x.fillText(month?new Date(month+'-02T00:00:00Z').toLocaleString('en-US',{month:'long',timeZone:'UTC'}):'Receipts',M,64);x.font='10px Arial';const from=month?month+'-01':dates[0],to=month?new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10):dates[dates.length-1];x.fillText(`From: ${shortDate(from)} To: ${shortDate(to)}`,M,79);y=93;x.font='bold 10px Arial';for(const t of s.totals){x.fillText(`${s.totals.length===1?'Grand Total':'Total'}: ${t.currency} ${money(t.total)}`,M,y);y+=13;}y=Math.max(y+28,133);};
- const row=async(values,fill,header=false)=>{x.font=`${header?'bold ':''}10px Arial`;const lines=values.map((v,i)=>wrap(x,v,widths[i]-8));const h=Math.max(22,...lines.map(a=>a.length*12+8));if(y+h>H-55){await addSurface(doc,c);start();await row(headers,'#cce3ff',true);}x.fillStyle=fill;x.fillRect(M,y,W-2*M,h);x.fillStyle=header?BLUE:'black';let left=M;lines.forEach((ls,i)=>{ls.forEach((t,j)=>x.fillText(t,left+(widths[i]-x.measureText(t).width)/2,y+14+j*12));left+=widths[i];});y+=h;};
+ const row=async(values,fill,header=false)=>{x.font=`${header?'bold ':''}10px Arial`;const lines=values.map((v,i)=>wrap(x,v,widths[i]-8));let offset=0;const count=Math.max(...lines.map(a=>a.length));while(offset<count){let capacity=Math.floor((H-55-y-8)/12);if(capacity<1){await addSurface(doc,c);start();await row(headers,'#cce3ff',true);capacity=Math.floor((H-55-y-8)/12);}const take=Math.min(capacity,count-offset),h=Math.max(22,take*12+8);x.font=`${header?'bold ':''}10px Arial`;x.fillStyle=fill;x.fillRect(M,y,W-2*M,h);x.fillStyle=header?BLUE:'black';let left=M;lines.forEach((ls,i)=>{ls.slice(offset,offset+take).forEach((t,j)=>x.fillText(t,left+(widths[i]-x.measureText(t).width)/2,y+14+j*12));left+=widths[i];});y+=h;offset+=take;}};
  start();await row(headers,'#cce3ff',true);
  for(let i=0;i<s.rows.length;i++){const r=s.rows[i];await row([shortDate(r.receipt_date),r.vendor+(r.status==='excluded'?' [EXCLUDED]':''),money(r.amount),r.currency,r.company,r.reimbursable?'Yes':'No'],i%2?'white':'#eeeef3');}
  for(const t of s.totals)await row(['','',money(t.total),t.currency,'',''],'#cce3ff',true);
  // Filters and exclusions are explicit without replacing the historical table.
  x.font='8px Arial';for(const line of description(s).slice(0,5)){for(const part of wrap(x,line,W-2*M)){if(y+14>H-48){await addSurface(doc,c);start();}x.fillStyle='#444';x.fillText(part,M,y+16);y+=11;}}
- if(s.filters.includeExcluded)for(const t of s.totals){x.fillText(`Excluded (not counted): ${t.currency} ${money(t.excluded)}`,M,y+16);y+=12;}
+ if(s.filters.includeExcluded)for(const t of s.totals){if(y+28>H-48){await addSurface(doc,c);start();}x.font='8px Arial';x.fillStyle='#444';x.fillText(`Excluded (not counted): ${t.currency} ${money(t.excluded)}`,M,y+16);y+=12;}
  await addSurface(doc,c);
 }
 async function pdf(s,loadSource,progress=()=>{}){
@@ -66,7 +66,7 @@ async function pdf(s,loadSource,progress=()=>{}){
  async function panel(asset,r,number,part,total,isPdf=false){
   if(slot%4===0){if(overlay){const image=await doc.embedPng(overlay.c.toDataURL());sheet.drawImage(image,{x:0,y:0,width:W,height:H});}sheet=await addSurface(doc,surface().c);overlay=surface();overlay.x.clearRect(0,0,W,H);}
   const idx=slot%4,col=idx%2,line=Math.floor(idx/2),left=M+col*270,top=51+line*377,bw=261,bh=344;
-  const x=overlay.x;x.fillStyle='black';x.font='8px Arial';const label=`${number} • ${r.vendor} • ${shortDate(r.receipt_date)}${total>1?` • ${part}/${total}`:''}${r.status==='excluded'?' • EXCLUDED':''}`;const lines=wrap(x,label,bw);lines.forEach((t,i)=>x.fillText(t,left+(bw-x.measureText(t).width)/2,top+8+i*10));
+  const x=overlay.x;x.fillStyle='black';x.font='8px Arial';const label=`${number} • ${r.vendor} • ${shortDate(r.receipt_date)}${total>1?` • ${part}/${total}`:''}${r.status==='excluded'?' • EXCLUDED':''}`;const lines=wrap(x,label,bw);if(lines.length>3){lines.length=2;lines.push(`${shortDate(r.receipt_date)} • ${part}/${total}${r.status==='excluded'?' • EXCLUDED':''} • Full name in summary`);}lines.forEach((t,i)=>x.fillText(t,left+(bw-x.measureText(t).width)/2,top+8+i*10));
   const h=bh-(lines.length-1)*10,fit=Math.min(bw/asset.width,h/asset.height);const opts={x:left+(bw-asset.width*fit)/2,y:H-top-20-(lines.length-1)*10-asset.height*fit,width:asset.width*fit,height:asset.height*fit};
   if(isPdf)sheet.drawPage(asset,opts);else sheet.drawImage(asset,opts);slot++;
  }
@@ -74,7 +74,7 @@ async function pdf(s,loadSource,progress=()=>{}){
   const r=s.rows[i];progress(i+1,s.rows.length);if(!r.storage_path)throw new Error(`Receipt ${r.id}: no source file. PDF not created.`);
   let blob;try{blob=await loadSource(r);}catch{throw new Error(`Receipt ${r.id}: source unavailable. No partial PDF was downloaded.`);}if(!blob?.size)throw new Error(`Receipt ${r.id}: empty source file. PDF not created.`);
   try{const bytes=await blob.arrayBuffer();
-   if(r.mime_type==='application/pdf'||/\.pdf$/i.test(r.storage_path)){const src=await root.PDFLib.PDFDocument.load(bytes);if(!src.getPageCount())throw Error('Empty PDF');for(let j=0;j<src.getPageCount();j++){const [embedded]=await doc.embedPdf(src,[j]);await panel(embedded,r,i+1,j+1,src.getPageCount(),true);}}
+   if(r.mime_type==='application/pdf'||/\.pdf$/i.test(r.storage_path)){const src=await root.PDFLib.PDFDocument.load(bytes);if(!src.getPageCount())throw Error('Empty PDF');for(let j=0;j<src.getPageCount();j++){const sourcePage=src.getPage(j);if(!sourcePage.node.Contents())sourcePage.drawRectangle({x:0,y:0,width:0,height:0});const [embedded]=await doc.embedPdf(src,[j]);await panel(embedded,r,i+1,j+1,src.getPageCount(),true);}}
    else{const bitmap=await createImageBitmap(blob);try{const c=document.createElement('canvas');c.width=bitmap.width;c.height=bitmap.height;c.getContext('2d').drawImage(bitmap,0,0);const asset=await doc.embedPng(c.toDataURL());await panel(asset,r,i+1,1,1);}finally{bitmap.close();}}
    // Full original bytes remain available even when the historical compact panel is small.
    await doc.attach(bytes,`${i+1}-${(r.original_name||r.storage_path.split('/').pop()).replace(/[\\/]/g,'_')}`,{mimeType:r.mime_type,description:`Original receipt ${i+1}`});

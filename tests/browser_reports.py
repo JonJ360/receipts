@@ -25,6 +25,13 @@ with sync_playwright() as p:
  if(!drawn.includes('From: 9/1/26 To: 9/30/26'))throw Error('Monthly report must show complete calendar range');
  if(!drawn.some(t=>t.includes('1 • École <not HTML> • 9/1/26'))||!drawn.some(t=>t.includes('2/2')))throw Error('Missing chronological or multipage caption');
  if(drawn.includes('RECEIPT INDEX')||drawn.some(t=>t.includes('Original receipt evidence follows')))throw Error('Generic cover sheet returned');
+ const blankSource=await PDFLib.PDFDocument.create();blankSource.addPage();const blankBytes=await blankSource.save();
+ const blankReport=await ReceiptReports.pdf(ReceiptReports.snapshot([rows[1]],{}),async()=>new Blob([blankBytes],{type:'application/pdf'}));
+ const blankLoaded=await PDFLib.PDFDocument.load(blankReport);if(blankLoaded.getPageCount()!==2)throw Error('Blank source page lost');
+ const positions=[];CanvasRenderingContext2D.prototype.fillText=function(text,x,y,...args){positions.push(y);return originalFillText.call(this,text,x,y,...args)};
+ await ReceiptReports.pdf(ReceiptReports.snapshot([{...rows[0],vendor:'Very long vendor '.repeat(150)}],{}),async()=>img);
+ if(positions.some(y=>y>830||y<0))throw Error('Clipped oversized summary or caption');
+ CanvasRenderingContext2D.prototype.fillText=originalFillText;
  const xlsx=await ReceiptReports.workbook(snap);
  let missing=false;try{await ReceiptReports.pdf(s,async()=>{throw Error('missing')})}catch(e){missing=true}
  let empty=false;try{await ReceiptReports.pdf(ReceiptReports.snapshot([],{}),async()=>img)}catch(e){empty=true}
