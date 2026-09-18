@@ -138,3 +138,14 @@ create policy "editors upload receipt objects" on storage.objects
   for insert to authenticated
   with check (bucket_id = 'receipts'
               and lower(auth.jwt() ->> 'email') = any (array['jonj@360-llc.com','margi@360-llc.com']));
+
+-- ---------------------------------------------------------------------------
+-- Table privileges for PostgREST roles.  REQUIRED: a raw `create table` does
+-- NOT grant SELECT/INSERT/etc to anon/authenticated.  RLS gates *rows*, but the
+-- role still needs the underlying GRANT or PostgREST returns
+-- "permission denied for table".  Mirrors the live `assets` table grants.
+-- ---------------------------------------------------------------------------
+grant select, insert, update, delete on public.receipts to authenticated;
+grant select on public.receipt_history to authenticated;
+grant all on public.receipts to service_role;
+grant all on public.receipt_history to service_role;
