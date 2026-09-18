@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>360 Receipts</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --bg:#E9ECF1;--tile:#FFFFFF;--ink:#222A33;--muted:#6E7885;--line:#D5DBE3;--line2:#C3CBD6;
+  --blue:#2B7BFF;--blue2:#1F5AB8;--blue-lite:#E8F0FD;--blue-line:#B9D0F2;
+  --green:#2F8F63;--red:#C0453C;--amber:#B5821F;--r:12px;
+  --lift:0 1px 0 rgba(255,255,255,.9) inset,0 1px 2px rgba(28,40,58,.10),0 4px 10px rgba(28,40,58,.05);
+}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+button,input,select,textarea{font:inherit}
+.app{min-height:100vh;display:grid;grid-template-columns:210px 1fr}
+.side{position:sticky;top:0;height:100vh;padding:20px 14px;background:linear-gradient(180deg,#F6F8FB,#DFE4EC);border-right:1px solid var(--line2);box-shadow:1px 0 6px rgba(28,40,58,.08);z-index:3}
+.brand{padding:4px 8px 20px}.brand-mark{width:38px;height:38px;border-radius:10px;background:linear-gradient(145deg,#5C90E4,var(--blue));border:1px solid var(--blue2);box-shadow:0 4px 12px rgba(43,123,255,.34);display:grid;place-items:center;color:#fff;font-weight:900;letter-spacing:-1px;margin-bottom:10px}
+.eyebrow{font-size:10px;font-weight:800;letter-spacing:1.6px;color:var(--muted);text-transform:uppercase}.brand h1{font-size:18px;margin:3px 0 0}
+.version{display:inline-block;padding:3px 7px;border-radius:6px;background:var(--blue-lite);border:1px solid var(--blue-line);font:700 10px ui-monospace,Consolas,monospace;color:var(--blue2);margin-top:4px}
+.nav{display:grid;gap:6px}.nav button{border:1px solid transparent;background:transparent;text-align:left;padding:10px 11px;border-radius:9px;color:#47515E;font-weight:650;cursor:pointer}
+.nav button:hover{background:#fff;border-color:var(--line)}.nav button.active{color:#fff;background:linear-gradient(#5C90E4,var(--blue));border-color:var(--blue2);box-shadow:0 3px 8px rgba(43,123,255,.32)}
+.side-foot{position:absolute;bottom:18px;left:16px;right:16px;padding-top:12px;border-top:1px solid var(--line2);font-size:10px;color:var(--muted);line-height:1.5}
+.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:5px;box-shadow:0 0 0 3px rgba(47,143,99,.12)}
+.main{min-width:0}.top{position:sticky;top:0;z-index:2;padding:14px 22px;background:rgba(233,236,241,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top-row{display:flex;align-items:center;justify-content:space-between;gap:14px}.title h2{margin:0;font-size:21px}.title p{margin:3px 0 0;color:var(--muted);font-size:12px}
+.content{padding:18px 22px 40px;max-width:1050px;margin:auto}
+.view{display:none}.view.active{display:block}
+.card,.panel{background:var(--tile);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--lift)}
+.panel{overflow:hidden;margin-bottom:14px}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;background:linear-gradient(#FBFCFD,#EFF2F6);border-bottom:1px solid var(--line)}
+.panel-title{font-size:11px;font-weight:850;letter-spacing:1.15px;text-transform:uppercase;color:#46515E}.panel-note{font-size:10px;color:var(--muted)}.panel-body{padding:16px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label.fld{display:grid;gap:5px;font-size:10px;font-weight:850;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
+.fld input,.fld select,.fld textarea{width:100%;padding:10px 11px;border:1px solid var(--line2);border-radius:9px;background:#fff;color:var(--ink);font-weight:600}
+.fld input:focus,.fld select:focus,.fld textarea:focus{outline:0;border-color:var(--blue);box-shadow:0 0 0 3px rgba(43,123,255,.16)}
+.fld.wide{grid-column:1/-1}.fld textarea{min-height:64px;resize:vertical;font-weight:500}
+.drop{grid-column:1/-1;border:2px dashed var(--blue-line);border-radius:12px;background:var(--blue-lite);padding:18px;text-align:center;color:var(--blue2);font-weight:700;cursor:pointer}
+.drop input{display:none}.preview{grid-column:1/-1;display:none;gap:12px;align-items:center}
+.preview.show{display:flex}.preview img{max-height:150px;max-width:220px;border-radius:9px;border:1px solid var(--line2);background:#fff}
+.preview .meta{font-size:12px;color:var(--muted);line-height:1.5}
+.btn{border:1px solid var(--blue2);border-radius:9px;color:#fff;background:linear-gradient(#5C90E4,var(--blue));padding:11px 16px;font-weight:800;cursor:pointer}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.btn.ghost{background:#fff;color:var(--blue2);border-color:var(--blue-line)}
+.actions{grid-column:1/-1;display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px}
+.ipline{display:flex;gap:9px;align-items:center;font-weight:650;color:var(--ink);text-transform:none;letter-spacing:0;font-size:13px}
+.ipline input{width:18px;height:18px;accent-color:var(--blue);cursor:pointer}
+.msg{grid-column:1/-1;min-height:18px;font-size:12.5px;font-weight:700}.msg.ok{color:var(--green)}.msg.err{color:var(--red)}.msg.info{color:var(--blue2)}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.kpi{padding:14px 15px}.kpi.blue{background:linear-gradient(145deg,#F4F8FF,var(--blue-lite));border-color:var(--blue-line)}
+.k-label{font-size:10px;font-weight:850;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.k-value{font:750 24px ui-monospace,Consolas,monospace;margin-top:8px;letter-spacing:-1px}.kpi.blue .k-value{color:var(--blue2)}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.filters label{display:grid;gap:4px;font-size:9px;font-weight:850;letter-spacing:.9px;text-transform:uppercase;color:var(--muted)}
+.filters select,.filters input{height:36px;border:1px solid var(--line2);border-radius:9px;background:#fff;padding:0 10px;font-weight:700;color:#46515E}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;padding:9px 10px;color:var(--muted);font-size:9px;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--line2);background:#F7F9FB;position:sticky;top:0}
+td{padding:10px;border-bottom:1px solid #E7EBF0}tr:hover td{background:var(--blue-lite)}
+th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:3px 8px;border-radius:999px;background:var(--blue-lite);border:1px solid var(--blue-line);color:var(--blue2);font-size:10px;font-weight:750}
+.st{font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;text-transform:uppercase;letter-spacing:.5px}
+.st.ready{background:#E4F5EC;color:#1F6B44;border:1px solid #A9DcC0}.st.needs_coding{background:#FFF3D8;color:#8A6418;border:1px solid #E6C879}
+.st.reported{background:var(--blue-lite);color:var(--blue2);border:1px solid var(--blue-line)}.st.excluded{background:#EEF0F3;color:#6E7885;border:1px solid var(--line2)}
+.linklike{color:var(--blue2);font-weight:750;cursor:pointer;text-decoration:none}
+.empty{padding:26px;text-align:center;color:var(--muted)}
+.lock{position:fixed;inset:0;z-index:100;background:linear-gradient(145deg,#E9ECF1,#D9DFE7);display:none;place-items:center;padding:20px}.lock.show{display:grid}
+.lock-card{width:min(390px,100%);padding:25px;background:#fff;border:1px solid var(--line2);border-radius:16px;box-shadow:0 18px 55px rgba(28,40,58,.18)}
+.lock-logo{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:900;background:linear-gradient(#5C90E4,var(--blue));border:1px solid var(--blue2);box-shadow:0 5px 14px rgba(43,123,255,.34);margin-bottom:15px}
+.lock h2{margin:0 0 5px}.lock p{margin:0 0 18px;color:var(--muted);font-size:12px}
+.lock label{display:block;margin:11px 0 5px;font-size:10px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.lock select,.lock input{width:100%;padding:11px;border:1px solid var(--line2);border-radius:9px;background:#fff}
+.lock input:focus,.lock select:focus{outline:0;border-color:var(--blue);box-shadow:0 0 0 3px rgba(43,123,255,.16)}
+.lock button{width:100%;margin-top:15px;border:1px solid var(--blue2);border-radius:9px;padding:11px;color:#fff;background:linear-gradient(#5C90E4,var(--blue));font-weight:800;cursor:pointer}
+.lock-error{min-height:18px;margin-top:10px;color:var(--red);font-size:11px}
+@media(max-width:760px){
+  .app{display:block}.side{position:sticky;height:auto;padding:9px 10px;border-right:0;border-bottom:1px solid var(--line2)}
+  .brand{display:flex;align-items:center;gap:10px;padding:0 0 8px}.brand-mark{width:32px;height:32px;margin:0}.brand h1{font-size:15px}.brand .eyebrow,.side-foot{display:none}
+  .nav{display:flex;overflow:auto;gap:5px}.nav button{white-space:nowrap;padding:8px 12px}
+  .content{padding:12px}.form-grid{grid-template-columns:1fr}.kpis{grid-template-columns:1fr}table{min-width:560px}
+}
+</style>
+</head>
+<body>
+<div class="lock" id="lock"><div class="lock-card"><div class="lock-logo">RCP</div><h2>360 Receipts</h2><p>Use the same secure account as the other 360 apps.</p>
+  <label for="authUser">User</label>
+  <select id="authUser"><option value="jonj@360-llc.com">Jon</option><option value="margi@360-llc.com">Margi</option></select>
+  <label for="authPin">PIN</label>
+  <input id="authPin" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" placeholder="6-digit PIN">
+  <button id="loginBtn">Sign in</button><div class="lock-error" id="lockError"></div>
+</div></div>
+
+<div class="app">
+<aside class="side">
+  <div class="brand"><div class="brand-mark">RCP</div><div><div class="eyebrow">360 Solutions</div><h1>Receipts</h1><div class="version">VERSION 1.0</div></div></div>
+  <nav class="nav" aria-label="Sections">
+    <button class="active" data-view="add">Add Receipt</button>
+    <button data-view="list">Receipts</button>
+  </nav>
+  <div class="side-foot"><div><span class="live-dot"></span>Supabase · private</div><div id="whoami">—</div></div>
+</aside>
+<main class="main">
+<header class="top"><div class="top-row">
+  <div class="title"><h2 id="viewTitle">Add Receipt</h2><p id="viewSub">Snap or upload a receipt — the scanner fills it in.</p></div>
+  <div><button class="btn ghost" id="signOutBtn">Sign out</button></div>
+</div></header>
+<div class="content">
+
+  <section class="view active" id="add">
+    <div class="panel"><div class="panel-head"><span class="panel-title">New Receipt</span><span class="panel-note">Image or PDF · up to 25 MB</span></div>
+      <div class="panel-body"><div class="form-grid">
+        <label class="drop" id="drop" for="file">📷 Tap to take a photo or choose a file
+          <input id="file" type="file" accept="image/*,application/pdf" capture="environment"></label>
+        <div class="preview" id="preview"><img id="previewImg" alt="preview"><div class="meta" id="previewMeta"></div></div>
+        <div class="actions">
+          <button class="btn ghost" id="scanBtn" disabled>✨ Scan &amp; auto-fill</button>
+          <span class="msg info" id="scanMsg"></span>
+        </div>
+        <label class="fld">Date<input id="fDate" type="date"></label>
+        <label class="fld">Amount<input id="fAmount" type="number" step="0.01" inputmode="decimal" placeholder="0.00"></label>
+        <label class="fld">Vendor<input id="fVendor" type="text" placeholder="Vendor / merchant"></label>
+        <label class="fld">Currency<select id="fCurrency"><option>USD</option><option>CAD</option><option>EUR</option></select></label>
+        <label class="fld">Company / Reimbursement<select id="fCompany"></select></label>
+        <label class="fld">Status<select id="fStatus"><option value="ready">Ready</option><option value="needs_coding">Needs coding</option></select></label>
+        <label class="fld wide">Business purpose / comment<textarea id="fComment" placeholder="What was this for?"></textarea></label>
+        <label class="fld"><span class="ipline"><input id="fReimb" type="checkbox" checked>Reimbursable</span></label>
+        <div class="actions">
+          <button class="btn" id="saveBtn" disabled>Save receipt</button>
+          <button class="btn ghost" id="resetBtn">Clear</button>
+          <span class="msg" id="saveMsg"></span>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <section class="view" id="list">
+    <div class="kpis">
+      <div class="card kpi blue"><div class="k-label">Receipts</div><div class="k-value" id="kCount">0</div></div>
+      <div class="card kpi"><div class="k-label">Total</div><div class="k-value" id="kTotal">$0</div></div>
+      <div class="card kpi"><div class="k-label">Reimbursable</div><div class="k-value" id="kReimb">$0</div></div>
+    </div>
+    <div class="filters">
+      <label>Month<select id="fltMonth"></select></label>
+      <label>Company<select id="fltCompany"></select></label>
+      <label>Status<select id="fltStatus"><option value="">All</option><option value="ready">Ready</option><option value="needs_coding">Needs coding</option><option value="reported">Reported</option><option value="excluded">Excluded</option></select></label>
+      <label>Search<input id="fltSearch" type="search" placeholder="Vendor / comment"></label>
+      <button class="btn ghost" id="reloadBtn" style="height:36px">Reload</button>
+    </div>
+    <div class="panel"><div class="panel-head"><span class="panel-title">Receipts</span><span class="panel-note" id="listNote">—</span></div>
+      <div class="panel-body table-wrap">
+        <table><thead><tr><th>Date</th><th>Vendor</th><th class="num">Amount</th><th>Company</th><th>Status</th><th>Image</th></tr></thead>
+        <tbody id="listBody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody></table>
+      </div>
+    </div>
+  </section>
+
+</div>
+</main>
+</div>
+
+<script>
+const SUPA_URL='https://inhwadbibwkakacdvoxu.supabase.co';
+const SUPA_KEY='sb_publishable_mvtNl3RxZB_V8xSserWVZA_8givexBq';
+const SB=window.supabase?.createClient(SUPA_URL,SUPA_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+const COMPANIES=['Reimbursed - SMI','Reimbursed - Jon','Reimbursed - 360','Structural Materials (SMI)','Structural Fab','Butcher Block Meats','Roasted Rail Coffee','Real Steel Solutions','CMC Electric','Uniform Unit','Vampire Penguin','OZ Development','Milton','Alaska','Wash','Needs Coding'];
+const $=id=>document.getElementById(id);
+const money=n=>'$'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const lock=$('lock'),lockError=$('lockError');
+let state={file:null,fileSha:null,uploadedPath:null,rows:[],email:''};
+
+// ---------- auth ----------
+async function initAuth(){
+  if(!SB){lock.classList.add('show');lockError.textContent='Secure login library did not load.';return;}
+  const {data:{session}}=await SB.auth.getSession();
+  if(session?.access_token){const r=await SB.auth.refreshSession();if(r.data.session?.access_token){onSignedIn(r.data.session);return;}}
+  lock.classList.add('show');
+}
+async function signIn(){
+  lockError.textContent='Signing in…';$('loginBtn').disabled=true;
+  const r=await SB.auth.signInWithPassword({email:$('authUser').value,password:$('authPin').value});
+  $('loginBtn').disabled=false;
+  if(r.error){lockError.textContent=r.error.message||'Unable to sign in.';$('authPin').value='';return;}
+  lock.classList.remove('show');lockError.textContent='';onSignedIn(r.data.session);
+}
+function onSignedIn(session){
+  state.email=(session.user?.email||'').toLowerCase();
+  $('whoami').textContent=state.email;
+  buildPickers();loadList();
+}
+$('loginBtn').onclick=signIn;
+$('authPin').addEventListener('keydown',e=>{if(e.key==='Enter')signIn();});
+$('signOutBtn').onclick=async()=>{await SB.auth.signOut();location.reload();};
+
+// ---------- navigation ----------
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===b.dataset.view));
+  $('viewTitle').textContent=b.textContent;
+  $('viewSub').textContent=b.dataset.view==='add'?'Snap or upload a receipt — the scanner fills it in.':'All receipts, filterable by month and company.';
+  if(b.dataset.view==='list')loadList();
+});
+
+// ---------- pickers ----------
+function buildPickers(){
+  $('fCompany').innerHTML=COMPANIES.map(c=>`<option>${esc(c)}</option>`).join('');
+  $('fltCompany').innerHTML='<option value="">All companies</option>'+COMPANIES.map(c=>`<option>${esc(c)}</option>`).join('');
+  const now=new Date();const opts=['<option value="">All months</option>'];
+  for(let i=0;i<18;i++){const d=new Date(now.getFullYear(),now.getMonth()-i,1);const v=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;opts.push(`<option value="${v}">${d.toLocaleString('en-US',{month:'long',year:'numeric'})}</option>`);}
+  $('fltMonth').innerHTML=opts.join('');
+  if(!$('fDate').value)$('fDate').value=new Date().toISOString().slice(0,10);
+}
+
+// ---------- file handling ----------
+async function sha256Hex(buf){const h=await crypto.subtle.digest('SHA-256',buf);return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join('');}
+$('file').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(f.size>26214400){$('saveMsg').className='msg err';$('saveMsg').textContent='File exceeds 25 MB.';return;}
+  state.file=f;state.uploadedPath=null;
+  const buf=await f.arrayBuffer();state.fileSha=await sha256Hex(buf);
+  $('preview').classList.add('show');
+  $('previewMeta').innerHTML=`<b>${esc(f.name)}</b><br>${(f.size/1024).toFixed(0)} KB · ${esc(f.type||'file')}`;
+  if(f.type.startsWith('image/')){$('previewImg').src=URL.createObjectURL(f);$('previewImg').style.display='';}
+  else{$('previewImg').style.display='none';}
+  $('scanBtn').disabled=false;$('saveBtn').disabled=false;
+  $('saveMsg').textContent='';
+});
+
+async function ensureUploaded(){
+  if(state.uploadedPath)return state.uploadedPath;
+  const f=state.file;const ext=(f.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const d=$('fDate').value||new Date().toISOString().slice(0,10);
+  const path=`${d.slice(0,4)}/${d.slice(5,7)}/${crypto.randomUUID()}.${ext}`;
+  const {error}=await SB.storage.from('receipts').upload(path,f,{upsert:false,contentType:f.type||'application/octet-stream'});
+  if(error)throw error;
+  state.uploadedPath=path;return path;
+}
+
+// ---------- scan (LLM vision edge function) ----------
+$('scanBtn').onclick=async()=>{
+  if(!state.file)return;
+  $('scanBtn').disabled=true;$('scanMsg').className='msg info';$('scanMsg').textContent='Uploading & scanning…';
+  try{
+    const path=await ensureUploaded();
+    const {data:{session}}=await SB.auth.getSession();
+    const res=await fetch(`${SUPA_URL}/functions/v1/receipt-scan`,{method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`,'apikey':SUPA_KEY},
+      body:JSON.stringify({storage_path:path})});
+    if(!res.ok)throw new Error('scan_'+res.status);
+    const j=await res.json();
+    if(j.date)$('fDate').value=j.date;
+    if(j.vendor)$('fVendor').value=j.vendor;
+    if(j.amount!=null)$('fAmount').value=j.amount;
+    if(j.currency)$('fCurrency').value=j.currency;
+    if(j.suggested_company&&COMPANIES.includes(j.suggested_company))$('fCompany').value=j.suggested_company;
+    state.lastOcr=j;
+    $('scanMsg').className='msg ok';$('scanMsg').textContent='Scanned — please review the fields.';
+  }catch(err){
+    $('scanMsg').className='msg err';
+    $('scanMsg').textContent=(String(err.message).startsWith('scan_'))?'Scanner not available yet — enter details manually.':('Scan failed: '+err.message);
+  }finally{$('scanBtn').disabled=false;}
+};
+
+// ---------- save ----------
+$('saveBtn').onclick=async()=>{
+  const amount=parseFloat($('fAmount').value);
+  if(!$('fDate').value){return sm('err','Date is required.');}
+  if(isNaN(amount)){return sm('err','Amount is required.');}
+  if(!state.file){return sm('err','Attach the receipt image or PDF.');}
+  $('saveBtn').disabled=true;sm('info','Saving…');
+  try{
+    const path=await ensureUploaded();
+    const row={receipt_date:$('fDate').value,vendor:$('fVendor').value.trim(),amount:amount.toFixed(2),
+      currency:$('fCurrency').value,company:$('fCompany').value,comment:$('fComment').value.trim(),
+      reimbursable:$('fReimb').checked,status:$('fStatus').value,storage_bucket:'receipts',storage_path:path,
+      original_name:state.file.name,mime_type:state.file.type||'',byte_size:state.file.size,sha256:state.fileSha||'',
+      source:'portal',ocr_raw:state.lastOcr||null};
+    const {data,error}=await SB.from('receipts').insert(row).select('id').single();
+    if(error)throw error;
+    sm('ok','Saved ✓  ('+data.id.slice(0,8)+')');
+    resetForm(true);
+  }catch(err){sm('err','Save failed: '+(err.message||err));}
+  finally{$('saveBtn').disabled=false;}
+};
+function sm(cls,t){$('saveMsg').className='msg '+cls;$('saveMsg').textContent=t;}
+function resetForm(keepMsg){
+  state.file=null;state.fileSha=null;state.uploadedPath=null;state.lastOcr=null;
+  $('file').value='';$('preview').classList.remove('show');$('previewImg').src='';
+  $('fVendor').value='';$('fAmount').value='';$('fComment').value='';$('fReimb').checked=true;
+  $('fStatus').value='ready';$('fDate').value=new Date().toISOString().slice(0,10);
+  $('scanBtn').disabled=true;$('saveBtn').disabled=true;$('scanMsg').textContent='';
+  if(!keepMsg)$('saveMsg').textContent='';
+}
+$('resetBtn').onclick=()=>resetForm(false);
+
+// ---------- list ----------
+async function loadList(){
+  $('listBody').innerHTML='<tr><td colspan="6" class="empty">Loading…</td></tr>';
+  const {data,error}=await SB.from('receipts').select('*').order('receipt_date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);
+  if(error){$('listBody').innerHTML=`<tr><td colspan="6" class="empty">Error: ${esc(error.message)}</td></tr>`;return;}
+  state.rows=data||[];renderList();
+}
+function renderList(){
+  const m=$('fltMonth').value,co=$('fltCompany').value,st=$('fltStatus').value,q=$('fltSearch').value.trim().toLowerCase();
+  let rows=state.rows.filter(r=>{
+    if(m&&!(r.receipt_date||'').startsWith(m))return false;
+    if(co&&r.company!==co)return false;
+    if(st&&r.status!==st)return false;
+    if(q&&!((r.vendor||'').toLowerCase().includes(q)||(r.comment||'').toLowerCase().includes(q)))return false;
+    return true;});
+  const total=rows.reduce((s,r)=>s+Number(r.amount||0),0);
+  const reimb=rows.filter(r=>r.reimbursable).reduce((s,r)=>s+Number(r.amount||0),0);
+  $('kCount').textContent=rows.length;$('kTotal').textContent=money(total);$('kReimb').textContent=money(reimb);
+  $('listNote').textContent=`${rows.length} shown · ${money(total)}`;
+  if(!rows.length){$('listBody').innerHTML='<tr><td colspan="6" class="empty">No receipts match.</td></tr>';return;}
+  $('listBody').innerHTML=rows.map(r=>`<tr>
+    <td>${esc(r.receipt_date||'')}</td>
+    <td>${esc(r.vendor||'—')}${r.comment?`<br><span class="panel-note">${esc(r.comment)}</span>`:''}</td>
+    <td class="num">${money(r.amount)}</td>
+    <td>${esc(r.company||'')}${r.reimbursable?' <span class="pill">reimb</span>':''}</td>
+    <td><span class="st ${esc(r.status)}">${esc(String(r.status).replace('_',' '))}</span></td>
+    <td>${r.storage_path?`<span class="linklike" data-path="${esc(r.storage_path)}">View</span>`:'—'}</td>
+  </tr>`).join('');
+  document.querySelectorAll('[data-path]').forEach(el=>el.onclick=()=>viewImage(el.dataset.path));
+}
+async function viewImage(path){
+  const {data,error}=await SB.storage.from('receipts').createSignedUrl(path,300);
+  if(error){alert('Could not open image: '+error.message);return;}
+  window.open(data.signedUrl,'_blank','noopener');
+}
+['fltMonth','fltCompany','fltStatus'].forEach(id=>$(id).addEventListener('change',renderList));
+$('fltSearch').addEventListener('input',renderList);
+$('reloadBtn').onclick=loadList;
+
+initAuth();
+</script>
+</body>
+</html>
