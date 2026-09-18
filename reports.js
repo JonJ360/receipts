@@ -29,43 +29,58 @@ async function workbook(s){
  for(let r=1;r<=8;r++){summary.mergeCells(r,1,r,6);summary.getRow(r).height=18*Math.max(1,Math.ceil(String(summary.getCell(r,1).value||'').length/115));}
  summary.getRow(10).font={bold:true,color:{argb:'FF1F5AB8'}};summary.getRow(10).height=32;
  const ws=wb.addWorksheet('Receipts',{views:[{state:'frozen',ySplit:1}]});
- const fields=[['Receipt ID','id',38],['Ledger ID','ledger_receipt_id',24],['Date','receipt_date',14],['Vendor','vendor',30],['Amount','amount',18],['Currency','currency',12],['Company / reimbursement','company',28],['Category code','category_code',18],['Purpose / comment','comment',50],['Reimbursable','reimbursable',16],['Status','status',18],['Counted in report','counted',20],['Source','source',14],['Original file','original_name',36],['Source path','storage_path',50],['SHA-256','sha256',68]];
+ const fields=[['Date','receipt_date',14],['Name','vendor',30],['Price','amount',18],['Currency','currency',12],['Category Name','company',28],['Category Code','category_code',18],['Comment','comment',50],['Reimbursable','reimbursable',16],['Receipt ID','id',38],['Ledger ID','ledger_receipt_id',24],['Status','status',18],['Counted in report','counted',20],['Source','source',14],['Original file','original_name',36],['Source path','storage_path',50],['SHA-256','sha256',68]];
  ws.columns=fields.map(([header,key,width])=>({header,key,width}));
- for(const r of s.rows){const record={};for(const [,key] of fields)record[key]=key==='amount'?cents(r.amount)/100:key==='counted'?r.status!=='excluded':key==='reimbursable'?!!r[key]:String(r[key]??'');ws.addRow(record);}
+ for(const r of s.rows){const record={};for(const [,key] of fields)record[key]=key==='receipt_date'?new Date(`${r[key]}T00:00:00Z`):key==='amount'?cents(r.amount)/100:key==='counted'?r.status!=='excluded':key==='reimbursable'?(r[key]?'Yes':'No'):String(r[key]??'');ws.addRow(record);}
+ ws.getColumn('receipt_date').numFmt='m/d/yy';
  ws.autoFilter={from:'A1',to:{row:ws.rowCount,column:fields.length}};ws.getColumn('amount').numFmt='#,##0.00;[Red]-#,##0.00';
  for(const sh of [summary,ws]){sh.getRow(1).font={bold:true,color:{argb:'FFFFFFFF'}};sh.getRow(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F5AB8'}};sh.eachRow(row=>{row.alignment={vertical:'top',wrapText:true};});}
  for(let r=11;r<=summary.rowCount;r++)for(const c of [3,4,6])summary.getCell(r,c).numFmt='#,##0.00;[Red]-#,##0.00';
  return wb.xlsx.writeBuffer();
 }
-// Render metadata with browser fonts: Unicode survives, with no HTML interpretation.
-// Evidence PDFs are copied as original pages; images are embedded, never linked.
-async function textPages(doc,lines){
- const width=1224,height=1584,pad=72,lineHeight=34;let canvas,ctx,y;
- function start(){canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,width,height);ctx.fillStyle='#222A33';ctx.font='24px Arial';y=pad;}
- async function flush(){const image=await doc.embedPng(canvas.toDataURL());const page=doc.addPage([612,792]);page.drawImage(image,{x:0,y:0,width:612,height:792});}
- start();for(const line of lines){let part='';for(const char of String(line)){if(ctx.measureText(part+char).width>width-2*pad){ctx.fillText(part,pad,y);y+=lineHeight;part='';if(y>height-pad){await flush();start();}}part+=char;}ctx.fillText(part,pad,y);y+=lineHeight;if(y>height-pad){await flush();start();}}
- if(y>pad)await flush();
-}
-async function imagePages(doc,blob){
- let bitmap;try{bitmap=await createImageBitmap(blob);}catch{throw new Error('Unsupported or damaged image. Convert HEIC/HEIF to JPEG or PNG before exporting.');}
- try{const scale=Math.min(1,1080/bitmap.width);const sliceHeight=Math.max(1,Math.floor(1440/scale));
- for(let top=0;top<bitmap.height;top+=sliceHeight){const h=Math.min(sliceHeight,bitmap.height-top);const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(h*scale));const ctx=canvas.getContext('2d');ctx.fillStyle='white';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,top,bitmap.width,h,0,0,canvas.width,canvas.height);const img=await doc.embedPng(canvas.toDataURL());const page=doc.addPage([612,792]);const fit=Math.min(540/img.width,720/img.height);page.drawImage(img,{x:(612-img.width*fit)/2,y:756-img.height*fit,width:img.width*fit,height:img.height*fit});}
- }finally{bitmap.close();}
+// Smart Receipts precedent: A4 summary, six columns, four evidence panels.
+// Browser fonts preserve Unicode; PDF evidence remains vector and all pages survive.
+const W=595.28,H=841.89,M=32,BLUE='#0080ff';
+const shortDate=v=>{const [y,m,d]=v.split('-');return `${Number(m)}/${Number(d)}/${y.slice(2)}`;};
+const money=v=>Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+function surface(){const c=document.createElement('canvas');c.width=Math.round(W*2);c.height=Math.round(H*2);const x=c.getContext('2d');x.scale(2,2);x.fillStyle='white';x.fillRect(0,0,W,H);x.fillStyle=BLUE;x.fillRect(M,M,W-2*M,4);x.fillRect(M,H-32,W-2*M,1.5);x.fillStyle='black';x.font='italic 8px Arial';x.fillText('Report Generated using Receipt Tracker',M,H-19);return {c,x};}
+function wrap(x,text,width){let lines=[''];for(const ch of String(text??'')){let i=lines.length-1;if(x.measureText(lines[i]+ch).width>width&&lines[i])lines.push(ch);else lines[i]+=ch;}return lines;}
+async function addSurface(doc,c){const p=doc.addPage([W,H]);p.drawImage(await doc.embedPng(c.toDataURL()),{x:0,y:0,width:W,height:H});return p;}
+async function summaryPages(doc,s){
+ let c,x,y;const widths=[68,96,70,74,133,90];
+ const headers=['Date','Name','Price','Currency','Category Name','Reimbursable'];
+ const start=()=>{({c,x}=surface());x.fillStyle='black';x.font='bold 12px Arial';const dates=s.rows.map(r=>r.receipt_date);const months=[...new Set(dates.map(d=>d.slice(0,7)))];const month=s.filters.month||(months.length===1?months[0]:'');x.fillText(month?new Date(month+'-02T00:00:00Z').toLocaleString('en-US',{month:'long',timeZone:'UTC'}):'Receipts',M,64);x.font='10px Arial';const from=month?month+'-01':dates[0],to=month?new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10):dates[dates.length-1];x.fillText(`From: ${shortDate(from)} To: ${shortDate(to)}`,M,79);y=93;x.font='bold 10px Arial';for(const t of s.totals){x.fillText(`${s.totals.length===1?'Grand Total':'Total'}: ${t.currency} ${money(t.total)}`,M,y);y+=13;}y=Math.max(y+28,133);};
+ const row=async(values,fill,header=false)=>{x.font=`${header?'bold ':''}10px Arial`;const lines=values.map((v,i)=>wrap(x,v,widths[i]-8));const h=Math.max(22,...lines.map(a=>a.length*12+8));if(y+h>H-55){await addSurface(doc,c);start();await row(headers,'#cce3ff',true);}x.fillStyle=fill;x.fillRect(M,y,W-2*M,h);x.fillStyle=header?BLUE:'black';let left=M;lines.forEach((ls,i)=>{ls.forEach((t,j)=>x.fillText(t,left+(widths[i]-x.measureText(t).width)/2,y+14+j*12));left+=widths[i];});y+=h;};
+ start();await row(headers,'#cce3ff',true);
+ for(let i=0;i<s.rows.length;i++){const r=s.rows[i];await row([shortDate(r.receipt_date),r.vendor+(r.status==='excluded'?' [EXCLUDED]':''),money(r.amount),r.currency,r.company,r.reimbursable?'Yes':'No'],i%2?'white':'#eeeef3');}
+ for(const t of s.totals)await row(['','',money(t.total),t.currency,'',''],'#cce3ff',true);
+ // Filters and exclusions are explicit without replacing the historical table.
+ x.font='8px Arial';for(const line of description(s).slice(0,5)){for(const part of wrap(x,line,W-2*M)){if(y+14>H-48){await addSurface(doc,c);start();}x.fillStyle='#444';x.fillText(part,M,y+16);y+=11;}}
+ if(s.filters.includeExcluded)for(const t of s.totals){x.fillText(`Excluded (not counted): ${t.currency} ${money(t.excluded)}`,M,y+16);y+=12;}
+ await addSurface(doc,c);
 }
 async function pdf(s,loadSource,progress=()=>{}){
  nonempty(s);if(!root.PDFLib)throw new Error('PDF export library did not load. Reload and retry.');
- const doc=await root.PDFLib.PDFDocument.create();doc.setTitle('360 Receipts report');doc.setProducer('360 Receipts 1.1');
- const lines=['360 RECEIPTS — REPORT',...description(s),'','Signed amounts retained. No cross-currency grand total.','Excluded amounts are evidence only, not counted in report totals.','',...s.totals.map(t=>`${t.currency}: ${t.count} counted | Total ${t.total.toFixed(2)} | Reimbursable ${t.reimbursable.toFixed(2)} | Excluded ${t.excludedCount}: ${t.excluded.toFixed(2)}`),'','RECEIPT INDEX (date / vendor / currency & amount / ID)',...s.rows.flatMap((r,i)=>[`${i+1}. ${r.receipt_date} | ${r.vendor} | ${r.currency} ${Number(r.amount).toFixed(2)}${r.status==='excluded'?' — EXCLUDED (not counted)':''}`,`    ${r.id}`])];
- await textPages(doc,lines);
- for(let i=0;i<s.rows.length;i++){
- const r=s.rows[i];progress(i+1,s.rows.length);
- if(!r.storage_path)throw new Error(`Receipt ${r.id}: no source file. PDF not created.`);
- let blob;try{blob=await loadSource(r);}catch{throw new Error(`Receipt ${r.id}: source unavailable or access expired. Sign in / reload and retry. No partial PDF was downloaded.`);}
- if(!blob?.size)throw new Error(`Receipt ${r.id}: empty source file. PDF not created.`);
- await textPages(doc,[`RECEIPT ${i+1} OF ${s.rows.length}`,`${r.receipt_date} | ${r.vendor}`,`${r.currency} ${Number(r.amount).toFixed(2)} | ${r.status}${r.status==='excluded'?' — NOT COUNTED':''}`,`Company / reimbursement: ${r.company||''}`,`Category code: ${r.category_code||''}`,`Reimbursable: ${r.reimbursable?'Yes':'No'}`,`Purpose: ${r.comment||''}`,`Receipt ID: ${r.id}`,`Ledger ID: ${r.ledger_receipt_id||''}`,`Source: ${r.source||''}`,`Original file: ${r.original_name||''}`,`Source path: ${r.storage_path}`,'','Original receipt evidence follows.']);
- try{if(r.mime_type==='application/pdf'||/\.pdf$/i.test(r.storage_path)){const src=await root.PDFLib.PDFDocument.load(await blob.arrayBuffer());if(!src.getPageCount())throw new Error('Empty PDF');const pages=await doc.copyPages(src,src.getPageIndices());pages.forEach(p=>doc.addPage(p));}else await imagePages(doc,blob);}catch{throw new Error(`Receipt ${r.id}: unreadable, encrypted or unsupported source. Convert HEIC/HEIF to JPEG/PNG or unlock the PDF. No partial PDF was downloaded.`);}
+ const doc=await root.PDFLib.PDFDocument.create();doc.setTitle('Receipts report');doc.setProducer('Receipt Tracker 1.2');await summaryPages(doc,s);
+ let sheet=null,slot=0,overlay=null;
+ async function panel(asset,r,number,part,total,isPdf=false){
+  if(slot%4===0){if(overlay){const image=await doc.embedPng(overlay.c.toDataURL());sheet.drawImage(image,{x:0,y:0,width:W,height:H});}sheet=await addSurface(doc,surface().c);overlay=surface();overlay.x.clearRect(0,0,W,H);}
+  const idx=slot%4,col=idx%2,line=Math.floor(idx/2),left=M+col*270,top=51+line*377,bw=261,bh=344;
+  const x=overlay.x;x.fillStyle='black';x.font='8px Arial';const label=`${number} • ${r.vendor} • ${shortDate(r.receipt_date)}${total>1?` • ${part}/${total}`:''}${r.status==='excluded'?' • EXCLUDED':''}`;const lines=wrap(x,label,bw);lines.forEach((t,i)=>x.fillText(t,left+(bw-x.measureText(t).width)/2,top+8+i*10));
+  const h=bh-(lines.length-1)*10,fit=Math.min(bw/asset.width,h/asset.height);const opts={x:left+(bw-asset.width*fit)/2,y:H-top-20-(lines.length-1)*10-asset.height*fit,width:asset.width*fit,height:asset.height*fit};
+  if(isPdf)sheet.drawPage(asset,opts);else sheet.drawImage(asset,opts);slot++;
  }
- return doc.save();
+ for(let i=0;i<s.rows.length;i++){
+  const r=s.rows[i];progress(i+1,s.rows.length);if(!r.storage_path)throw new Error(`Receipt ${r.id}: no source file. PDF not created.`);
+  let blob;try{blob=await loadSource(r);}catch{throw new Error(`Receipt ${r.id}: source unavailable. No partial PDF was downloaded.`);}if(!blob?.size)throw new Error(`Receipt ${r.id}: empty source file. PDF not created.`);
+  try{const bytes=await blob.arrayBuffer();
+   if(r.mime_type==='application/pdf'||/\.pdf$/i.test(r.storage_path)){const src=await root.PDFLib.PDFDocument.load(bytes);if(!src.getPageCount())throw Error('Empty PDF');for(let j=0;j<src.getPageCount();j++){const [embedded]=await doc.embedPdf(src,[j]);await panel(embedded,r,i+1,j+1,src.getPageCount(),true);}}
+   else{const bitmap=await createImageBitmap(blob);try{const c=document.createElement('canvas');c.width=bitmap.width;c.height=bitmap.height;c.getContext('2d').drawImage(bitmap,0,0);const asset=await doc.embedPng(c.toDataURL());await panel(asset,r,i+1,1,1);}finally{bitmap.close();}}
+   // Full original bytes remain available even when the historical compact panel is small.
+   await doc.attach(bytes,`${i+1}-${(r.original_name||r.storage_path.split('/').pop()).replace(/[\\/]/g,'_')}`,{mimeType:r.mime_type,description:`Original receipt ${i+1}`});
+  }catch{throw new Error(`Receipt ${r.id}: unreadable, encrypted or unsupported source. Convert HEIC/HEIF to JPEG/PNG or unlock the PDF. No partial PDF was downloaded.`);}
+ }
+ if(overlay){const image=await doc.embedPng(overlay.c.toDataURL());sheet.drawImage(image,{x:0,y:0,width:W,height:H});}return doc.save();
 }
 const api={snapshot,description,workbook,pdf};root.ReceiptReports=api;if(typeof module!=='undefined')module.exports=api;
 })(typeof window!=='undefined'?window:globalThis);

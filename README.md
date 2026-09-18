@@ -1,13 +1,13 @@
 # 360 Receipt Tracker
 
-Supabase-backed receipt capture for the 360 Apps hub. Data and private receipt sources remain in Supabase under existing RLS. Version **1.1**.
+Supabase-backed receipt capture for the 360 Apps hub. Data and private receipt sources remain in Supabase under existing RLS. Version **1.2**.
 
 ## Export reports
 
 On **Receipts**, choose month/company/status/search filters, then **Export report** beside Reload. The modal refreshes the ledger and freezes those filters for the report. It shows counts and per-currency totals before download.
 
-- **PDF with receipt pictures** downloads a printable PDF: report summary/index, coding and source IDs, then actual embedded receipt evidence. JPEG/PNG/WebP images are embedded (long images continue onto additional pages); all original PDF source pages are copied. Open the downloaded PDF to print. Metadata uses browser-font rasterization for Unicode, so metadata text is not selectable; original PDF text is preserved where present.
-- **Excel verification** downloads a real `.xlsx`: Summary plus Receipts sheets, numeric signed amounts, separate currencies, coding, IDs, provenance and source hashes, frozen headings and autofilter. No pictures or expiring signed URLs. Text beginning with `=` stays text, not a formula.
+- **PDF with receipt pictures** follows the verified historical Smart Receipts layout: A4, blue rules, a six-column striped summary (Date, Name, Price, Currency, Category Name, Reimbursable), then four numbered receipt panels per page. All source PDF pages occupy panels in order; images are fitted whole without cropping. Original bytes are also attached inside the PDF for full-resolution review. No per-receipt cover sheets or giant screenshot pagination. Browser-font summary/captions preserve Unicode but are not selectable; embedded source PDF text stays selectable. The footer accurately identifies Receipt Tracker, not Smart Receipts.
+- **Excel verification** downloads a real `.xlsx`: Summary plus Receipts sheets; the first eight receipt columns match the historical CSV exactly (Date, Name, Price, Currency, Category Name, Category Code, Comment, Reimbursable), followed by verification/provenance fields. Native dates and numeric signed amounts, separate currencies, coding, IDs, provenance and source hashes, frozen headings and autofilter. No pictures or expiring signed URLs. Text beginning with `=` stays text, not a formula.
 - Excluded receipts are omitted by default. Explicit opt-in includes them as evidence/verification rows with **separate excluded totals**, never in report or reimbursable totals. This also applies when the status filter is Excluded. Positive/negative wash entries retain their signs.
 - Export does not change status, write records, email, share or send anything. Downloads contain private information; handle locally according to your normal accounting process.
 - Empty selections disable export. Source download/authentication errors, encrypted PDFs and unreadable images block the **entire PDF**, never silently drop evidence. Excel can still verify rows with missing evidence. HEIC/HEIF decoding depends on browser support; if unsupported, convert the source to JPEG/PNG first. There is no automatic replacement of originals.
