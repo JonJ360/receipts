@@ -1,0 +1,11 @@
+# Reports and credentials must never reach the public Pages repository.
+*.pdf
+*.xlsx
+*.png
+*.jpg
+*.jpeg
+*.webp
+.env*
+*production-snapshot*
+__pycache__/
+node_modules/

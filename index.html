@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>360 Receipts</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="reports.js?v=1.1"></script>
 <style>
 :root{
   --bg:#E9ECF1;--tile:#FFFFFF;--ink:#222A33;--muted:#6E7885;--line:#D5DBE3;--line2:#C3CBD6;
@@ -63,6 +64,7 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 .st.reported{background:var(--blue-lite);color:var(--blue2);border:1px solid var(--blue-line)}.st.excluded{background:#EEF0F3;color:#6E7885;border:1px solid var(--line2)}
 .linklike{color:var(--blue2);font-weight:750;cursor:pointer;text-decoration:none}
 .empty{padding:26px;text-align:center;color:var(--muted)}
+dialog{width:min(570px,calc(100% - 24px));max-height:90vh;overflow:auto;border:1px solid var(--blue-line);border-radius:14px;padding:22px;color:var(--ink);box-shadow:0 18px 55px #1c283a40}dialog::backdrop{background:#222a3370}dialog h2{margin:0 0 12px;font-size:21px}.report-summary{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.6;padding:12px;background:var(--blue-lite);border-radius:9px;margin:12px 0}dialog .ipline{align-items:flex-start}dialog .panel-note{font-size:12px;line-height:1.5}dialog .msg{margin-top:12px;overflow-wrap:anywhere}
 .lock{position:fixed;inset:0;z-index:100;background:linear-gradient(145deg,#E9ECF1,#D9DFE7);display:none;place-items:center;padding:20px}.lock.show{display:grid}
 .lock-card{width:min(390px,100%);padding:25px;background:#fff;border:1px solid var(--line2);border-radius:16px;box-shadow:0 18px 55px rgba(28,40,58,.18)}
 .lock-logo{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;color:#fff;font-weight:900;background:linear-gradient(#5C90E4,var(--blue));border:1px solid var(--blue2);box-shadow:0 5px 14px rgba(43,123,255,.34);margin-bottom:15px}
@@ -91,7 +93,7 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 
 <div class="app">
 <aside class="side">
-  <div class="brand"><div class="brand-mark">RCP</div><div><div class="eyebrow">360 Solutions</div><h1>Receipts</h1><div class="version">VERSION 1.0</div></div></div>
+  <div class="brand"><div class="brand-mark">RCP</div><div><div class="eyebrow">360 Solutions</div><h1>Receipts</h1><div class="version">VERSION 1.1</div></div></div>
   <nav class="nav" aria-label="Sections">
     <button class="active" data-view="add">Add Receipt</button>
     <button data-view="list">Receipts</button>
@@ -135,7 +137,7 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
   <section class="view" id="list">
     <div class="kpis">
       <div class="card kpi blue"><div class="k-label">Receipts</div><div class="k-value" id="kCount">0</div></div>
-      <div class="card kpi"><div class="k-label">Total</div><div class="k-value" id="kTotal">$0</div></div>
+      <div class="card kpi"><div class="k-label">Total · excludes excluded</div><div class="k-value" id="kTotal">$0</div></div>
       <div class="card kpi"><div class="k-label">Reimbursable</div><div class="k-value" id="kReimb">$0</div></div>
     </div>
     <div class="filters">
@@ -144,6 +146,7 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
       <label>Status<select id="fltStatus"><option value="">All</option><option value="ready">Ready</option><option value="needs_coding">Needs coding</option><option value="reported">Reported</option><option value="excluded">Excluded</option></select></label>
       <label>Search<input id="fltSearch" type="search" placeholder="Vendor / comment"></label>
       <button class="btn ghost" id="reloadBtn" style="height:36px">Reload</button>
+      <button class="btn" id="exportBtn" style="height:36px;padding:0 14px">Export report</button>
     </div>
     <div class="panel"><div class="panel-head"><span class="panel-title">Receipts</span><span class="panel-note" id="listNote">—</span></div>
       <div class="panel-body table-wrap">
@@ -157,6 +160,15 @@ th.num,td.num{text-align:right;font-variant-numeric:tabular-nums}
 </main>
 </div>
 
+<dialog id="exportDialog" aria-labelledby="exportTitle">
+  <h2 id="exportTitle">Export receipt report</h2>
+  <p class="panel-note">Uses the current Receipts filters with a fresh read of the ledger. Downloads stay on your device — nothing is sent or shared.</p>
+  <label class="ipline"><input type="checkbox" id="includeExcluded">Include excluded receipts as evidence (separate totals; never counted)</label>
+  <div class="report-summary" id="reportSummary" aria-live="polite">Loading…</div>
+  <div class="actions"><button class="btn" id="exportPdf" disabled>PDF with receipt pictures</button><button class="btn ghost" id="exportExcel" disabled>Excel verification</button><button class="btn ghost" id="closeExport">Close</button></div>
+  <p class="panel-note">PDF: summary, coding and original image/PDF evidence; open the download to print. Excel: line records and currency totals, no pictures. Missing or unreadable evidence blocks PDF rather than silently omitting it.</p>
+  <div class="msg info" id="exportMsg" role="status" aria-live="polite"></div>
+</dialog>
 <script>
 const SUPA_URL='https://inhwadbibwkakacdvoxu.supabase.co';
 const SUPA_KEY='sb_publishable_mvtNl3RxZB_V8xSserWVZA_8givexBq';
@@ -295,9 +307,8 @@ $('resetBtn').onclick=()=>resetForm(false);
 // ---------- list ----------
 async function loadList(){
   $('listBody').innerHTML='<tr><td colspan="6" class="empty">Loading…</td></tr>';
-  const {data,error}=await SB.from('receipts').select('*').order('receipt_date',{ascending:false}).order('created_at',{ascending:false}).limit(1000);
-  if(error){$('listBody').innerHTML=`<tr><td colspan="6" class="empty">Error: ${esc(error.message)}</td></tr>`;return;}
-  state.rows=data||[];renderList();
+  try{state.rows=await readReportRows();renderList();}
+  catch(error){state.rows=[];$('kCount').textContent='—';$('kTotal').textContent='—';$('kReimb').textContent='—';$('listNote').textContent='Unable to load';$('listBody').innerHTML=`<tr><td colspan="6" class="empty">${esc(error.message)}</td></tr>`;}
 }
 function renderList(){
   const m=$('fltMonth').value,co=$('fltCompany').value,st=$('fltStatus').value,q=$('fltSearch').value.trim().toLowerCase();
@@ -307,15 +318,15 @@ function renderList(){
     if(st&&r.status!==st)return false;
     if(q&&!((r.vendor||'').toLowerCase().includes(q)||(r.comment||'').toLowerCase().includes(q)))return false;
     return true;});
-  const total=rows.reduce((s,r)=>s+Number(r.amount||0),0);
-  const reimb=rows.filter(r=>r.reimbursable).reduce((s,r)=>s+Number(r.amount||0),0);
-  $('kCount').textContent=rows.length;$('kTotal').textContent=money(total);$('kReimb').textContent=money(reimb);
-  $('listNote').textContent=`${rows.length} shown · ${money(total)}`;
+  rows.sort((a,b)=>String(b.receipt_date).localeCompare(String(a.receipt_date))||String(a.vendor).localeCompare(String(b.vendor))||String(a.id).localeCompare(String(b.id)));
+  const totals=ReceiptReports.snapshot(rows).totals;
+  $('kCount').textContent=rows.length;$('kTotal').textContent=totals.map(t=>`${t.currency} ${t.total.toFixed(2)}`).join(' / ')||'—';$('kReimb').textContent=totals.map(t=>`${t.currency} ${t.reimbursable.toFixed(2)}`).join(' / ')||'—';
+  $('listNote').textContent=`${rows.length} shown · ${rows.filter(r=>r.status==='excluded').length} excluded (not counted in totals)`;
   if(!rows.length){$('listBody').innerHTML='<tr><td colspan="6" class="empty">No receipts match.</td></tr>';return;}
   $('listBody').innerHTML=rows.map(r=>`<tr>
     <td>${esc(r.receipt_date||'')}</td>
     <td>${esc(r.vendor||'—')}${r.comment?`<br><span class="panel-note">${esc(r.comment)}</span>`:''}</td>
-    <td class="num">${money(r.amount)}</td>
+    <td class="num">${esc(r.currency)} ${Number(r.amount).toFixed(2)}</td>
     <td>${esc(r.company||'')}${r.reimbursable?' <span class="pill">reimb</span>':''}</td>
     <td><span class="st ${esc(r.status)}">${esc(String(r.status).replace('_',' '))}</span></td>
     <td>${r.storage_path?`<span class="linklike" data-path="${esc(r.storage_path)}">View</span>`:'—'}</td>
@@ -330,6 +341,65 @@ async function viewImage(path){
 ['fltMonth','fltCompany','fltStatus'].forEach(id=>$(id).addEventListener('change',renderList));
 $('fltSearch').addEventListener('input',renderList);
 $('reloadBtn').onclick=loadList;
+
+// ---------- local-only exports (no row writes, emails or sharing) ----------
+async function requireReportUser(){
+  if(!SB)throw new Error('Sign in before exporting.');
+  const {data,error}=await SB.auth.getUser();
+  if(error||!data?.user)throw new Error('Sign in again before exporting; your session could not be verified.');
+}
+async function readReportRows(){
+  await requireReportUser();const rows=[];const seen=new Set();
+  for(let offset=0;;offset+=500){
+    const {data,error}=await SB.from('receipts').select('*').order('id',{ascending:true}).range(offset,offset+499);
+    if(error)throw new Error('Unable to read receipts. Reload or sign in and retry.');
+    for(const row of data||[]){if(seen.has(row.id))throw new Error('Receipts changed during loading. Reload and retry.');seen.add(row.id);rows.push(row);}
+    if((data||[]).length<500)return rows;
+  }
+}
+let reportRows=null,reportFilters=null,reportSnapshot=null,reportBusy=false;
+function refreshReportSummary(){
+  reportSnapshot=null;$('exportPdf').disabled=true;$('exportExcel').disabled=true;
+  if(!reportRows)return;
+  reportSnapshot=ReceiptReports.snapshot(reportRows,{...reportFilters,includeExcluded:$('includeExcluded').checked});
+  const s=reportSnapshot;
+  $('reportSummary').textContent=[`${s.rows.length} receipts selected`,...ReceiptReports.description(s).slice(0,5),...s.totals.map(t=>`${t.currency} ${t.total.toFixed(2)} report total · ${t.reimbursable.toFixed(2)} reimbursable${t.excludedCount?`\nExcluded evidence: ${t.excludedCount} · ${t.currency} ${t.excluded.toFixed(2)} (not counted)`:''}`)].join('\n');
+  $('exportPdf').disabled=!s.rows.length||reportBusy;$('exportExcel').disabled=!s.rows.length||reportBusy;
+}
+$('exportBtn').onclick=async()=>{
+  reportRows=null;reportSnapshot=null;reportBusy=true;$('includeExcluded').checked=false;$('includeExcluded').disabled=true;
+  $('exportMsg').textContent='';$('reportSummary').textContent='Loading fresh receipts…';refreshReportSummary();$('exportDialog').showModal();
+  reportFilters={month:$('fltMonth').value,company:$('fltCompany').value,status:$('fltStatus').value,search:$('fltSearch').value.trim()};
+  try{reportRows=await readReportRows();}catch(e){$('reportSummary').textContent='Report unavailable.';$('exportMsg').textContent=e.message;}
+  finally{reportBusy=false;$('includeExcluded').disabled=false;try{refreshReportSummary();}catch(e){$('exportMsg').textContent=e.message;}}
+};
+$('includeExcluded').onchange=()=>{try{refreshReportSummary();}catch(e){$('exportMsg').textContent=e.message;}};
+$('closeExport').onclick=()=>{if(!reportBusy)$('exportDialog').close();};
+$('exportDialog').addEventListener('cancel',e=>{if(reportBusy)e.preventDefault();});
+const reportLibraries=new Map();
+function reportLibrary(name){
+  if(!reportLibraries.has(name))reportLibraries.set(name,new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=`vendor/${name}.min.js`;script.onload=resolve;script.onerror=()=>{script.remove();reportLibraries.delete(name);reject(new Error('Export library failed to load. Check your connection and retry.'));};document.head.append(script);}));
+  return reportLibraries.get(name);
+}
+async function downloadReport(kind){
+ if(reportBusy||!reportSnapshot?.rows.length)return;
+ const snap=reportSnapshot;reportBusy=true;$('includeExcluded').disabled=true;$('closeExport').disabled=true;refreshReportSummary();$('exportMsg').textContent='Preparing report…';
+ try{
+  await requireReportUser();await reportLibrary(kind==='pdf'?'pdf-lib':'exceljs');
+  const bytes=kind==='pdf'?await ReceiptReports.pdf(snap,async r=>{
+    const {data,error}=await SB.storage.from('receipts').createSignedUrl(r.storage_path,300);
+    if(error||!data?.signedUrl)throw new Error('Source access failed');
+    const response=await fetch(data.signedUrl,{signal:AbortSignal.timeout(60000),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer'});
+    if(!response.ok)throw new Error('Source download failed');return response.blob();
+  },(i,n)=>{$('exportMsg').textContent=`Embedding receipt ${i} of ${n}…`;}):await ReceiptReports.workbook(snap);
+  await requireReportUser();
+  const url=URL.createObjectURL(new Blob([bytes],{type:kind==='pdf'?'application/pdf':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  const a=document.createElement('a');a.href=url;a.download=`Receipts-${snap.filters.month||'all-months'}-${snap.generated.slice(0,19).replace(/[:T]/g,'-')}.${kind==='pdf'?'pdf':'xlsx'}`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  $('exportMsg').textContent='Download prepared. Nothing was sent or shared.';
+ }catch(e){$('exportMsg').textContent=e.message||'Export failed. Reload and retry.';}
+ finally{reportBusy=false;$('includeExcluded').disabled=false;$('closeExport').disabled=false;refreshReportSummary();}
+}
+$('exportPdf').onclick=()=>downloadReport('pdf');$('exportExcel').onclick=()=>downloadReport('xlsx');
 
 initAuth();
 </script>
